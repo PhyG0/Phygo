@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SL-skcus</title>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <script>
+        var can = document.getElementById("canvas");var c = can.getContext("2d");
+        var w = can.width = window.innerWidth;
+        var h = can.height = window.innerHeight;
+        can.style.border = "2px solid black";
+        document.body.style.margin = "0px";
+        var v = document.createElement("video"); v.src = "https://raw.githubusercontent.com/God-Coding/SLSucks/main/A_relatable_art-meme_by_Konstantin_Void_____For_more__instagram.com_konstantinvoid(480p).mp4";
+        let clic = false; window.addEventListener("click", ()=>{ clic = true; })
+        function d(){
+            c.clearRect(0, 0, w, h); if(v.readyState == 4){ if(clic) {v.play();c.drawImage(v, 0, 0, w, h)}else{ c.font = "20px verdana"; c.fillText("Click anywhere...", 0, h/2) } }else{ c.font = "20px verdana"; c.fillText("Video Loading...", 0, h/2) };
+        }
+        function l(){d();requestAnimationFrame(l)}l();
+
+    </script>
+</body>
+</html>

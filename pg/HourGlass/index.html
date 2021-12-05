@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Physics</title>
+    <style>
+        body{
+            background-color: dimgrey;
+            margin: 0px;
+        }
+        #game{
+            position: absolute;
+            top : 50%;
+            left : 50%;
+        }
+        #canvas{
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+
+    </style>
+</head>
+<body>
+    <div id="game">
+        <canvas id="canvas"></canvas>
+    </div>
+    <script>
+        class Vec2d{
+    constructor(x, y){
+        this.x = x; 
+        this.y = y;
+    }
+
+    add(v){
+        return new Vec2d(this.x + v.x, this.y + v.y);
+    }
+
+    sub(v){
+        return new Vec2d(this.x - v.x, this.y - v.y);
+    }
+
+    scale(k){
+        return new Vec2d(this.x * k, this.y * k);
+    }
+
+    addScaled(v, k){
+        return new Vec2d(this.x + (v.x * k), this.y + (v.y * k));
+    }
+
+    lengthSquared(){
+        return (this.x * this.x + this.y * this.y);
+    }
+
+    length(){
+        return Math.sqrt(this.lengthSquared());
+    }
+
+    normalize(){
+        if(this.length() == 0) return this;
+        return new Vec2d(this.x / this.length(), this.y / this.length());
+    }
+
+    dot(v){
+        return this.x * v.x + this.y * v.y;
+    }
+
+    cross(v){
+        return (this.x * v.y - this.y * v.x);
+    }
+
+    angle(){
+        return Math.atan2(this.y, this.x);
+    }
+
+    perp(){
+        return new Vec2d(this.y, -this.x);
+    }
+
+    round(){
+        return new Vec2d(Math.round(this.x), Math.round(this.y));
+    }
+
+    static angleBetween(a, b){
+        return Math.acos((a.dot(b)) / (a.length() * b.length()));
+    }
+
+    static average(vecArray){
+        let r = new Vec2d(0, 0);
+        for(let i = 0; i < vecArray.length; i++){
+            r.x += vecArray[i].x;
+            r.y += vecArray[i].y;
+        }
+        return r.scale(1 / vecArray.length);
+    }
+
+    rotate(ang, center){
+        let x = this.x - center.x;
+        let y = this.y - center.y;
+        let r = [];
+        r[0] = Math.cos(ang) * x - Math.sin(ang) * y;
+        r[1] = Math.sin(ang) * x + Math.cos(ang) * y;
+        r[0] += center.x;
+        r[1] += center.y;
+        return new Vec2d(r[0], r[1]);
+    }    
+
+    draw(c){
+        c.fillStyle = "red";
+        c.beginPath();
+        c.arc(this.x, this.y, 5, 0, 2 * Math.PI);
+        c.closePath();
+        c.fill();        
+    }
+
+}
+
+    </script>
+    <script>
+var ENTITIES = [];
+class RigidBody { 
+    constructor(pos){
+        this.pos = pos;
+        this.vel = new Vec2d(0, 0);
+        this.acc = new Vec2d(0, 0);
+        this.aVel = 0;
+        this.aAcc = 0;
+        this.mass = 1;
+        this.friction = 1;
+        this.inertia = 100000;
+        this.vertices = [];
+        this.faceNormals = [];
+        this.angle = 0;
+        ENTITIES.push(this);
+    }
+
+    get inverseMass(){
+        if(this.mass == 0) return 0;
+        else return (1 / this.mass);
+    }
+
+    rotate(ang){
+        this.angle += ang;
+        for(let i = 0; i < this.vertices.length; i++){
+            this.vertices[i] = this.vertices[i].rotate(ang, this.pos);
+        }
+        this.correctNormals();
+    }
+
+    correctNormals(){
+        for(let i = 0; i < this.vertices.length; i++){
+            this.faceNormals[i] = this.vertices[(i + 1) % this.vertices.length].sub(this.vertices[i]).perp().normalize();
+        }
+    }
+
+    translate(vec){
+        this.pos = this.pos.add(vec);
+        for(let i = 0; i < this.vertices.length; i++){
+            this.vertices[i] = this.vertices[i].add(vec);
+        }
+        this.correctNormals();
+    }
+
+    moveTo(vec){
+        let dest = vec.sub(this.pos);
+        this.pos = this.pos.add(dest);
+        for(let i = 0; i  < this.vertices.length; i++){
+            this.vertices[i] = this.vertices[i].add(dest);
+        }
+        this.correctNormals();
+    }
+
+    static generateFaceNormals(verts){
+        let fn = [];
+        for(let i = 0; i < verts.length; i++){
+            fn[i] = verts[(i + 1) % verts.length].sub(verts[i]).perp().normalize()
+        }
+        return fn;
+    }
+
+    momentIntegration(dt){
+        this.pos = this.pos.addScaled(this.vel, dt);
+        for(let i = 0; i < this.vertices.length; i++){
+            this.vertices[i] = this.vertices[i].addScaled(this.vel, dt);
+        }
+        this.correctNormals();
+        this.vel = this.vel.addScaled(this.acc, dt);
+        this.aVel += this.aAcc;
+        this.rotate(this.aVel * dt);
+        this.aVel *= 0.995;
+    }
+
+    findSupportPoint(n, ptOnEdge){
+        let max = -Infinity;
+        let index =  false;
+        for(let i = 0; i < this.vertices.length; i++){
+            let v = this.vertices[i].sub(ptOnEdge);
+            let proj = n.dot(v);
+            if(proj > 0 && proj > max){
+                max = proj;
+                index = i;
+            }
+        }
+        return { sp : this.vertices[index], depth : max };
+    }
+
+    static DetectPolyVsCircle(e1, e2){
+        //e1-->polygon, e2-->circle
+        let e1SupportPoints = [];
+        for(let i = 0; i < e1.faceNormals.length; i++){
+            let spInfo1 = e2.findSupportPoint(e1.faceNormals[i].scale(-1), e1.vertices[i]);
+            spInfo1.n = e1.faceNormals[i];
+            e1SupportPoints[i] = spInfo1;
+            if(spInfo1.sp == undefined){
+                return false;
+            }
+        }
+
+        let nearestVertex = e2.findNearestVertex(e1.vertices);
+        let normal = nearestVertex.sub(e2.pos).normalize();
+        let info = e1.findSupportPoint(normal, e2.pos);
+        info.n = normal;
+        if(info.sp == undefined) return false;
+        e1SupportPoints.push(info);
+
+        let max = Infinity;
+        let index = null;
+        for(let i = 0; i < e1SupportPoints.length; i++){
+            if(e1SupportPoints[i].depth < max){
+                max = e1SupportPoints[i].depth;
+                index = i;
+            }
+        }
+
+        let v = e2.pos.sub(e1.pos);
+        if(v.dot(e1SupportPoints[index].n) < 0){
+            e1SupportPoints[index].n = e1SupportPoints[index].n.scale(-1);
+        }
+    
+        return e1SupportPoints[index];
+
+    }
+
+    static DetectCircleVsCircle(e1, e2){
+        let rSum = e1.r + e2.r;
+        let vFrom1to2 = e2.pos.sub(e1.pos);
+        if(vFrom1to2.lengthSquared() < Math.pow(rSum, 2)){
+            let d = rSum - vFrom1to2.length();
+            let n = vFrom1to2.normalize();
+            let sp = e2.pos.add(n.scale(d));
+            if(vFrom1to2.dot(n) > 0){
+                n = n.scale(-1);
+            }
+            return {
+                sp : sp,
+                n : n,
+                depth : d
+            }
+        }
+    }
+
+    static DetectPolyVsPoly(e1, e2){
+        let e1SupportPoints = [];
+        for(let i = 0; i < e1.faceNormals.length; i++){
+            let spInfo = e2.findSupportPoint(e1.faceNormals[i].scale(-1), e1.vertices[i]);
+            spInfo.n = e1.faceNormals[i];
+            e1SupportPoints[i] = spInfo;
+            if(spInfo.sp == undefined) return false;
+        }
+        let e2SupportPoints = [];
+        for(let i = 0; i < e2.faceNormals.length; i++){
+            let spInfo = e1.findSupportPoint(e2.faceNormals[i].scale(-1), e2.vertices[i]);
+            spInfo.n = e2.faceNormals[i];
+            e2SupportPoints[i] = spInfo;
+            if(spInfo.sp == undefined) return false;
+        }
+
+        let result = [];
+        for(let i = 0; i < e1SupportPoints.length; i++){
+            result.push(e1SupportPoints[i]);
+        }
+        for(let i = 0; i < e2SupportPoints.length; i++){
+            result.push(e2SupportPoints[i]);
+        }
+        
+        let max = Infinity;
+        let index = null;
+        for(let i = 0; i < result.length; i++){
+            if(result[i].depth < max){
+                max = result[i].depth;
+                index = i;
+            }
+        }
+
+        let v = e2.pos.sub(e1.pos);
+        if(v.dot(result[index].n) > 0){
+            result[index].n = result[index].n.scale(-1);
+        }
+    
+        return result[index];
+    }
+
+    static Response(e1, e2){
+        if(e1.mass == Infinity && e2.mass == Infinity) return;
+        let detection;
+        if(e1.type == "polygon" && e2.type == "polygon"){
+            detection = RigidBody.DetectPolyVsPoly(e1, e2);
+        }
+        if(e1.type == "circle" && e2.type == "circle"){
+            detection = RigidBody.DetectCircleVsCircle(e1, e2);
+        }
+        if(e1.type == "polygon" && e2.type == "circle"){
+            detection = RigidBody.DetectPolyVsCircle(e1, e2);
+            if(detection){
+                detection.n = detection.n.scale(-1);
+            }
+        }
+        if(e1.type == "circle" && e2.type == "polygon"){
+            detection = RigidBody.DetectPolyVsCircle(e2, e1);
+        }
+        if(detection){
+            //Collision info
+            let d = detection.depth;
+            let n = detection.n;
+            let p = detection.sp;
+            let e = Math.min(e1.friction, e2.friction);
+            //Position Correction
+            if(e1.mass == Infinity && e2.mass == Infinity) return;
+            let massProp;
+            if(e1.mass < e2.mass){
+                massProp = (e1.mass / e2.mass) * 100;
+                e1.translate(n.scale((d - (d * (massProp / 100)))));
+                e2.translate(n.scale(-d * (massProp / 100)));
+            }
+            if(e1.mass > e2.mass){
+                massProp = (e2.mass / e1.mass) * 100;
+                e2.translate(n.scale(-(d - (d * (massProp / 100)))));
+                e1.translate(n.scale(d * (massProp / 100)));
+            }
+            if(e1.mass == e2.mass){
+                e2.translate(n.scale(-d/2));
+                e1.translate(n.scale(d/2));
+            }
+            //Linear Impulse Resolution
+            // let relVel = e1.vel.sub(e2.vel);
+            // let j = -((1 + e) * relVel.dot(n)) / (e1.inverseMass + e2.inverseMass);
+            // let jn = n.scale(j);
+            // e1.vel = e1.vel.add(jn.scale(e1.inverseMass));
+            // e2.vel = e2.vel.sub(jn.scale(e2.inverseMass));
+            //Angular Impulse Resolution
+            let rA = p.sub(e1.pos);
+            let rB = p.sub(e2.pos);
+            let wa = e1.aVel;
+            let wb = e2.aVel;
+            let va = e1.vel;
+            let vb = e2.vel;
+            let vap = va.add(new Vec2d(-wa * rA.y, wa * rA.x));
+            let vbp = vb.add(new Vec2d(-wb * rB.y, wb * rB.x));
+            let relVel = vap.sub(vbp);
+            if(relVel.dot(n) > 0) return;
+            let j = (-(1 + e) * relVel.dot(n)) / (e1.inverseMass + e2.inverseMass + (rA.cross(n) * rA.cross(n)) / e1.inertia + (rB.cross(n) * rB.cross(n)) / e2.inertia);
+            let jn = n.scale(j);
+            e1.vel = e1.vel.add(jn.scale(e1.inverseMass));
+            e2.vel = e2.vel.sub(jn.scale(e2.inverseMass));
+            e1.aVel += rA.cross(jn.scale(1 / e1.inertia));
+            e2.aVel -= rB.cross(jn.scale(1 / e2.inertia));
+
+            let tangent = n.perp().scale(1);
+            let j2 = (-(1 + e) * relVel.dot(tangent)) / (e1.inverseMass + e2.inverseMass + (rA.cross(tangent) * rA.cross(tangent)) / e1.inertia + (rB.cross(tangent) * rB.cross(tangent)) / e2.inertia);
+            let jt = tangent.scale(j2);
+            e1.vel = e1.vel.add(jt.scale(e1.inverseMass));
+            e2.vel = e2.vel.sub(jt.scale(e2.inverseMass));
+            e1.aVel += rA.cross(jt.scale(1 / e1.inertia));
+            e2.aVel -= rB.cross(jt.scale(1 / e2.inertia));
+
+        }
+
+    }
+
+    draw(c){
+        c.strokeStyle = "red";
+        c.beginPath();
+        for(let i = 0; i < this.vertices.length; i++){
+            c.moveTo(this.vertices[i].x, this.vertices[i].y);
+            c.lineTo(this.vertices[(i + 1) % this.vertices.length].x, this.vertices[(i + 1) % this.vertices.length].y);
+        }
+        c.closePath();
+        c.stroke();
+    }
+}
+
+class Rect extends RigidBody {
+    constructor(pos, w, h){
+        super(pos);
+        this.w = w;
+        this.h = h;
+        this.type = "polygon";
+        this.vertices = [
+            new Vec2d(this.pos.x - this.w/2, this.pos.y - this.h/2),
+            new Vec2d(this.pos.x + this.w/2, this.pos.y - this.h/2),
+            new Vec2d(this.pos.x + this.w/2, this.pos.y + this.h/2),
+            new Vec2d(this.pos.x - this.w/2, this.pos.y + this.h/2),
+        ];
+        this.faceNormals = RigidBody.generateFaceNormals(this.vertices);
+        this.inertia = (this.w * this.w * this.w) / 500;
+    }
+}
+
+class Polygon extends RigidBody {
+    constructor(pos, n, r){
+        super(pos);
+        this.n = n;
+        this.r = r;
+        this.vertices = [];
+        this.type = "polygon";
+        for(let i = 0; i < this.n; i++){
+            this.vertices.push(new Vec2d(this.pos.x + this.r * Math.cos(i * ((2 * Math.PI) / this.n)), this.pos.y + this.r * Math.sin(i * ((2 * Math.PI) / this.n))));
+        }
+        this.faceNormals = RigidBody.generateFaceNormals(this.vertices);
+        this.inertia = Math.pow(this.r, 2);
+    }
+}
+
+class Circle extends RigidBody {
+    constructor(pos, r){
+        super(pos);
+        this.r = r;
+        this.type = "circle";
+        this.inertia = Math.pow(this.r, 2)
+    }
+
+    findSupportPoint(n, ep){
+        let circVerts = [];
+        circVerts[0] = this.pos.add(n.scale(this.r));
+        circVerts[1] = this.pos.add(n.scale(-this.r));
+        let max = -Infinity;
+        let index = null;
+        for(let i = 0; i < circVerts.length; i++){
+            let v = circVerts[i].sub(ep);
+            let proj = v.dot(n);
+            if(proj > 0 && proj > max){
+                max = proj;
+                index = i;
+            }
+        }   
+        return { sp : circVerts[index], depth : max }
+    }
+
+    findNearestVertex(verts){
+        let max = Infinity;
+        let index = null;
+        for(let i = 0; i < verts.length; i++){
+            let v = verts[i].sub(this.pos);
+            let dist = v.lengthSquared();
+            if(dist < max){
+                max = dist;
+                index = i;
+            }
+        }
+        return verts[index];
+    }
+
+    draw(c){
+        c.strokeStyle = "red";
+        c.lineWidth = 3;
+        c.beginPath();
+        c.arc(this.pos.x, this.pos.y, this.r, 0, 2 * Math.PI);
+        c.closePath();
+        c.stroke();
+        c.beginPath();
+        c.moveTo(this.pos.x, this.pos.y);
+        c.lineTo(this.pos.x + Math.cos(this.angle) * this.r, this.pos.y + this.r * Math.sin(this.angle));
+        c.stroke();
+        c.closePath();
+    }
+
+}
+    </script>   
+    <script>
+        window.onload = () =>{
+    var no_of_balls = 150;
+var can = document.getElementById("canvas");
+var c = canvas.getContext("2d");
+
+var w = can.width = 1000;
+var h = can.height = 1000;
+can.style.border = "2px solid black";
+
+var gameArea = document.getElementById("game");
+var RELAXATION_COUNT = 10;
+//boundaries
+var boundaries = [
+    new Rect(new Vec2d(0, h/2), 20, h),
+    new Rect(new Vec2d(w/2, 0), w, 20),
+    new Rect(new Vec2d(w, h/2), 20, h),
+    new Rect(new Vec2d(w/2, h), w, 20),
+];
+
+boundaries.forEach(boundry=>{
+    boundry.mass = Infinity;
+    boundry.inertia = Infinity;
+});
+
+function random(min, max){
+    return Math.random() * (max - min) + min;
+}
+
+//--EXAMPLE 1 
+//this.inertia = (this.w * this.w * this.w) / 500;
+// var a = new Rect(new Vec2d(400, 200), 100, 100);
+// a.friction = 0.3;
+// a.acc.y = 120;
+// var b = new Rect(new Vec2d(300, 400), 400, 30);
+// b.friction = 0.3;
+// b.acc.y = 120;
+// var c1 = new Rect(new Vec2d(300, 430), 40, 40);
+// c1.mass = Infinity;
+// c1.inertia = Infinity;
+
+// var a3 = new Rect(new Vec2d(500, 500), 100, 100);
+// a3.friction = 0.3;
+// a3.acc.y = 120;
+// var a2 = new Rect(new Vec2d(700, 500), 100, 100);
+// a2.friction = 0.3;
+// a2.acc.y = 120;
+// var b2 = new Rect(new Vec2d(600, 700), 400, 30);
+// b2.friction = 0.3;
+// b2.acc.y = 120;
+// var c1 = new Rect(new Vec2d(600, 730), 40, 40);
+// c1.mass = Infinity;
+// c1.inertia = Infinity;
+//--EXAMPLE--2
+//this.inertia = (this.w * this.w * this.w) / 50
+// var hitter = new Circle(new Vec2d(200, 500), 50);
+// hitter.inertia *= 1.5;
+// hitter.friction = 0.3;
+// hitter.mass = 2;
+// hitter.acc.y = 100;
+// hitter.vel = new Vec2d(200, 200);
+// for(let i = 0; i < 30; i++){
+//     let a = new Rect(new Vec2d(500, 100 + i * 50), 40, 40);
+//     a.friction = 0.3;
+//     a.acc.y = 100;
+// }
+//--Carrom Check --
+// var a = new Rect(new Vec2d(300, 300), 100, 100);
+// a.vel.y = -1000;
+//--SMASH EVERYTHING
+// for(let i = 0; i < 25; i++){
+//     let a = new Rect(new Vec2d(random(100, 900), random(100, 900)), 50, 50);
+//     a.friction = 0.3;
+//     a.acc.y = 100;
+//     a.inertia = (a.w * a.w * a.w) / 50;
+// }
+// for(let i = 0; i < 20; i++){
+//     let a = new Polygon(new Vec2d(random(100, 900), random(100, 900)), random(3, 6), random(30, 80));
+//     a.friction = 0.3;
+//     a.acc.y = 100;
+// }
+// for(let i = 0; i < 10; i++){
+//     let a = new Circle(new Vec2d(random(100, 900), random(100, 900)), random(30, 70));
+//     a.friction = 0.3;
+//     a.acc.y = 100;
+// }
+//-Hour glass
+
+var r1 = new Rect(new Vec2d(300, 400), 400, 20);
+r1.inertia = Infinity;
+r1.mass = Infinity;
+r1.rotate(1);
+
+var r2 = new Rect(new Vec2d(700, 400), 400, 20);
+r2.inertia = Infinity;
+r2.mass = Infinity;
+r2.rotate(-1);
+
+var r3 = new Rect(new Vec2d(290, 700), 400, 20);
+r3.inertia = Infinity;
+r3.mass = Infinity;
+r3.rotate(Math.PI - 1);
+
+var r4 = new Rect(new Vec2d(710, 700), 400, 20);
+r4.inertia = Infinity;
+r4.mass = Infinity;
+r4.rotate(Math.PI + 1);
+
+let base = new Rect(new Vec2d(500, 860), 600, 20);
+base.inertia = Infinity;
+base.mass = Infinity;
+
+for(let i = 0; i < no_of_balls; i++){
+    let a = new Circle(new Vec2d(random(350, 650), random(0, 450)), 10);
+    a.friction = 0.3;
+    a.acc.y = 500;
+}
+
+function update(dt){
+    ENTITIES.forEach(ent=>{
+        ent.momentIntegration(dt);
+    });
+    for(let k = 0; k < RELAXATION_COUNT; k++){
+        for(let i = 0; i < ENTITIES.length; i++){
+            let e1 = ENTITIES[i];
+            for(let j = i + 1; j < ENTITIES.length; j++){
+                let e2 = ENTITIES[j];
+                    RigidBody.Response(e1, e2);
+            }
+        }
+    }
+}   
+
+function draw(c){
+    c.fillStyle = "rgba(90, 190, 130)";
+    c.fillRect(0, 0, w, h);
+    ENTITIES.forEach(ent=>{
+        ent.draw(c);
+    });
+}
+
+function resizeScreen(c){
+    var widthToHeight = w / h;
+    var newWidth = window.innerWidth;
+    var newHeight = window.innerHeight;
+
+    var newWidthToHeight = newWidth / newHeight;
+
+    if(newWidthToHeight > widthToHeight){
+        newWidth = newHeight * widthToHeight;
+    }else{
+        newHeight = newWidth / widthToHeight;
+    }
+
+    gameArea.style.width = newWidth + "px";
+    gameArea.style.height = newHeight + "px";
+
+    gameArea.style.marginTop = (-newHeight / 2) + "px";
+    gameArea.style.marginLeft = (-newWidth / 2) + "px";
+
+    draw(c);
+}
+
+
+var t0 = performance.now();
+var t1 = dt = 0;
+function loop(){
+    t1 = performance.now();
+    dt = t1 - t0;
+    if(dt > 18) dt = 17;
+    update(dt / 1000);
+    resizeScreen(c);
+    t0 = t1;
+    requestAnimationFrame(loop);
+}
+loop();
+}
+    </script> 
+</body>
+</html>

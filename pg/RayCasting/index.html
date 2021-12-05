@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Physics</title>
+    <style>
+        body{
+            background-color: dimgrey;
+            margin: 0px;
+        }
+        #game{
+            position: absolute;
+            top : 50%;
+            left : 50%;
+        }
+        #canvas{
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+
+    </style>
+</head>
+<body>
+    <div id="game">
+        <canvas id="canvas"></canvas>
+    </div>
+    <script>
+        class Vec2d{
+    constructor(x, y){
+        this.x = x; 
+        this.y = y;
+    }
+
+    add(v){
+        return new Vec2d(this.x + v.x, this.y + v.y);
+    }
+
+    sub(v){
+        return new Vec2d(this.x - v.x, this.y - v.y);
+    }
+
+    scale(k){
+        return new Vec2d(this.x * k, this.y * k);
+    }
+
+    addScaled(v, k){
+        return new Vec2d(this.x + (v.x * k), this.y + (v.y * k));
+    }
+
+    lengthSquared(){
+        return (this.x * this.x + this.y * this.y);
+    }
+
+    length(){
+        return Math.sqrt(this.lengthSquared());
+    }
+
+    normalize(){
+        if(this.length() == 0) return this;
+        return new Vec2d(this.x / this.length(), this.y / this.length());
+    }
+
+    dot(v){
+        return this.x * v.x + this.y * v.y;
+    }
+
+    cross(v){
+        return (this.x * v.y - this.y * v.x);
+    }
+
+    angle(){
+        return Math.atan2(this.y, this.x);
+    }
+
+    clone(){
+        return new Vec2d(this.x, this.y);
+    }
+
+    perp(){
+        return new Vec2d(this.y, -this.x);
+    }
+
+    round(){
+        return new Vec2d(Math.round(this.x), Math.round(this.y));
+    }
+
+    static angleBetween(a, b){
+        return Math.acos((a.dot(b)) / (a.length() * b.length()));
+    }
+
+    static average(vecArray){
+        let r = new Vec2d(0, 0);
+        for(let i = 0; i < vecArray.length; i++){
+            r.x += vecArray[i].x;
+            r.y += vecArray[i].y;
+        }
+        return r.scale(1 / vecArray.length);
+    }
+
+    rotate(ang, center){
+        let x = this.x - center.x;
+        let y = this.y - center.y;
+        let r = [];
+        r[0] = Math.cos(ang) * x - Math.sin(ang) * y;
+        r[1] = Math.sin(ang) * x + Math.cos(ang) * y;
+        r[0] += center.x;
+        r[1] += center.y;
+        return new Vec2d(r[0], r[1]);
+    }    
+
+    draw(c){
+        c.fillStyle = "red";
+        c.beginPath();
+        c.arc(this.x, this.y, 5, 0, 2 * Math.PI);
+        c.closePath();
+        c.fill();        
+    }
+
+}
+    </script>
+    <script>
+        class RigidBody {
+    constructor(center){
+        this.center = center;
+        this.vertices = [];
+    }
+
+    rotate(ang){
+        for(let i = 0; i < this.vertices.length; i++){
+            this.vertices[i] = this.vertices[i].rotate(ang, this.center);
+        }
+    }
+
+    draw(c){
+        c.strokeStyle = "red";
+        c.beginPath();
+        for(let i = 0; i < this.vertices.length; i++){
+            c.moveTo(this.vertices[i].x, this.vertices[i].y);
+            c.lineTo(this.vertices[(i + 1) % this.vertices.length].x, this.vertices[(i + 1) % this.vertices.length].y);
+        }
+        c.closePath();
+        c.stroke();
+    }
+
+}
+
+class Polygon extends RigidBody {
+    constructor(center, n, size){
+        super(center);
+        this.n = n;
+        this.r = size;
+        for(let i = 0; i < this.n; i++){
+            this.vertices.push(new Vec2d(this.center.x + this.r * Math.cos(i * ((2 * Math.PI) / this.n)), this.center.y + this.r * Math.sin(i * ((2 * Math.PI) / this.n))));
+        }
+    }
+}
+
+class Ray {
+    constructor(start, angle, range){
+        this.start = start;
+        this.angle = angle;
+        this.range = range;
+        this.end = new Vec2d(0, 0);
+        this.col = "red";
+    }
+
+    draw(c){
+        c.strokeStyle = this.col;
+        this.end.x = this.start.x + Math.cos(this.angle) * this.range;
+        this.end.y = this.start.y + Math.sin(this.angle) * this.range;
+       c.beginPath();
+        c.moveTo(this.start.x, this.start.y);
+        c.lineTo(this.end.x, this.end.y);
+        c.closePath();
+        c.stroke();
+        this.col = "red";
+    }
+}
+
+function projectVerticesOnNormal(verts, n, ptEdge){
+    let max = -Infinity;
+    let index = null;
+    for(let i = 0; i < verts.length; i++){
+        let v = ptEdge.sub(verts[i]);
+        let proj = v.dot(n);
+        if(proj > max && proj > 0){
+            max = proj;
+            index = i;
+        }
+    }
+    return verts[index] != undefined;
+}
+
+function RayVsPolygon(ray, polygon){
+    let v = ray.end.sub(ray.start);
+    let normals = [
+        v.perp().normalize(),
+        v.scale(-1).perp().normalize()
+    ];
+    let leftMostVertex, rightMostVertex;
+    leftMostVertex = projectVerticesOnNormal(polygon.vertices, normals[0], ray.start);
+    rightMostVertex = projectVerticesOnNormal(polygon.vertices, normals[1], ray.start);
+    let d = leftMostVertex && rightMostVertex; 
+    if(d) ray.col = "green";
+    return d;
+}
+    </script>
+    <script>
+        window.onload = () =>{
+    var can = document.getElementById("canvas");
+    var c = canvas.getContext("2d");
+
+    var w = can.width = 1000;
+    var h = can.height = 1000;
+    can.style.border = "2px solid black";
+
+    var gameArea = document.getElementById("game");
+
+    var polygons = [
+        new Polygon(new Vec2d(700, h/2), 6, 110),
+        new Polygon(new Vec2d(w/2, h/5), 3, 100),
+        new Polygon(new Vec2d(w/3, h/1.4), 2, 100)
+    ];
+    var rays = [];
+    for(let i = -Math.PI; i < Math.PI; i += Math.PI/200){
+        rays.push(new Ray(new Vec2d(0, h/2), i, 1500));
+    }
+
+
+    function update(dt){
+        polygons.forEach(polygon=>{
+            polygon.rotate(0.01);
+        });
+    }   
+
+    function draw(c){
+        c.fillStyle = "black";
+        c.fillRect(0, 0, w, h);
+        polygons.forEach(polygon=>{
+            polygon.draw(c);
+        });
+        rays.forEach(ray=>{
+            ray.draw(c);
+        });
+        c.fillStyle ="Red";
+        for(let j = 0; j < polygons.length; j++){
+            for(let i = 0; i < rays.length; i++){
+                RayVsPolygon(rays[i], polygons[j]);
+            }
+        }
+    }
+
+    function resizeScreen(c){
+        var widthToHeight = w / h;
+        var newWidth = window.innerWidth;
+        var newHeight = window.innerHeight;
+
+        var newWidthToHeight = newWidth / newHeight;
+
+        if(newWidthToHeight > widthToHeight){
+            newWidth = newHeight * widthToHeight;
+        }else{
+            newHeight = newWidth / widthToHeight;
+        }
+
+        gameArea.style.width = newWidth + "px";
+        gameArea.style.height = newHeight + "px";
+
+        gameArea.style.marginTop = (-newHeight / 2) + "px";
+        gameArea.style.marginLeft = (-newWidth / 2) + "px";
+
+        draw(c);
+    }
+
+
+    var t0 = performance.now();
+    var t1 = dt = 0;
+    function loop(){
+        t1 = performance.now();
+        dt = t1 - t0;
+        if(dt > 18) dt = 17;
+        update(dt / 1000);
+        resizeScreen(c);
+        t0 = t1;
+        requestAnimationFrame(loop);
+    }
+    loop();
+}
+    </script>
+</body>
+</html>

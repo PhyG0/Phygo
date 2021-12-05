@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        #canvas{
+            border: 2px solid black;
+            position: absolute;
+        }
+        #canvas_bg{
+            position: absolute;
+        }
+        #head{
+            position: absolute;
+            color: aliceblue;
+            background-color: springgreen;
+            border-radius: 50%;
+            height: 50px;
+            font-size: 10px;
+        }
+        #hide{
+            position: absolute;
+            display: none;
+            background-color: red;
+            width: 100%;
+            height : 100%;
+        }
+
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <canvas id="canvas_bg"></canvas>
+    <div id="hide"><h3 id="some">Newton's universal law of gravitation</h3><img id="image" src="https://i.ibb.co/4FvKCVc/main-qimg-b6c4a533669fc2ef9b67ffaa5d8ea352.png"></div>
+    <div id="head"><h1 id="in">Info</h1></div>
+    <script>
+        class Vec2d{
+    constructor(x, y){
+        this.x = x;
+        this.y = y;
+    }
+
+    clone(){
+        return new Vec2d(this.x, this.y);
+    }
+
+    add(vec){
+        this.x += vec.x;
+        this.y += vec.y;
+    }
+
+    sub(vec){
+        this.x -= vec.x;
+        this.y -= vec.y;
+        return new Vec2d(this.x, this.y);
+    }
+    
+    lengthSquared(){
+        return this.x * this.x + this.y * this.y;
+    }
+
+    length(){
+        return Math.sqrt(this.lengthSquared());
+    }
+
+    normalize(){
+        if(this.length() > 0){
+            this.x /= this.length();
+            this.y /= this.length();
+        }
+    }
+
+    addScaled(vec, k){
+        this.x += (k * vec.x);
+        this.y += (k * vec.y);
+        return new Vec2d(this.x, this.y);
+    }
+
+    subScaled(vec, k){
+        this.x -= (k * vec.x);
+        this.y -= (k * vec.y);
+        return new Vec2d(this.x, this.y);
+    }
+
+    multiply(k){
+        this.x *= k;
+        this.y *= k;
+        return new Vec2d(this.x, this.y);
+    }
+
+    static distance(vec1, vec2){
+        return (vec1.sub(vec2).length());
+    }
+
+    static dotProduct(vec1, vec2){
+        return (vec1.x * vec2.x + vec1.y * vec2.y);
+    }
+
+    static angleBetween(vec1, vec2){
+        return (vec1.dotProduct(vec2) / (vec1.length() * vec2.length()));
+    }
+}
+
+
+
+class Particle{
+    constructor(mass){
+        if(typeof(mass) == "undefined") mass = 1;
+        this.mass = mass;
+        this.x = 0;
+        this.y = 0;
+        this.vx = 0;
+        this.vy = 0;
+    }
+
+    get vel2d(){
+        return new Vec2d(this.vx, this.vy);
+    }
+
+    set vel2d(vec){
+        this.vx = vec.x;
+        this.vy = vec.y;
+    }
+
+    get pos2d(){
+        return new Vec2d(this.x, this.y);
+    }
+
+    set pos2d(vec){
+        this.x = vec.x;
+        this.y = vec.y;
+    }
+}
+
+class Ball extends Particle{
+    constructor(radius, color, mass){
+        super(mass);
+        if(typeof(radius) == "undefined") radius = 20;
+        if(typeof(color) == "undefined") color = "Red";
+        this.radius = radius;
+        this.color = color;
+    }
+
+    draw(c){
+        var gradient = c.createRadialGradient(this.x, this.y, this.radius/5, this.x, this.y, this.radius);
+        gradient.addColorStop(0, "grey");
+        gradient.addColorStop(1, this.color);
+        c.beginPath();
+        c.arc(this.x, this.y, this.radius, 0, 2 * Math.PI);
+        c.fillStyle = gradient;
+        c.closePath();
+        c.fill();
+    }
+}
+
+
+var Forces = {
+    constantGravity : function(m, g){
+        return new Vec2d(0, m * g);
+    },
+    linearDrag : function(k, vec){
+        return new Vec2d(-k * vec.x, -k * vec.y);
+    },
+    add : function(arr){
+        var resultantForce = new Vec2d(0, 0);
+        arr.forEach(a=>{
+            resultantForce.add(a);
+        });
+        return resultantForce;
+    },
+    gravity : function(g, m1, m2, posVec){
+        return posVec.multiply((g * m1 * m2)/(posVec.length() * posVec.length() * posVec.length()));
+    }
+}
+
+        function random(min, max){
+            return Math.random() * (max - min) + min;
+        }
+
+        var img = document.getElementById("image");
+        var h = document.getElementById("head");
+        var hide = document.getElementById("hide");
+        var some = document.getElementById("some");
+
+        img.width = window.innerWidth/1.5;
+        
+        img.style.marginLeft = window.innerWidth/2 - img.width/2 + "px";
+        img.style.marginTop = window.innerHeight/2 - img.height/2 + "px";
+
+        some.style.marginTop = window.innerHeight/7 + "px";
+        some.style.position = "absolute";
+
+        var count = 1;
+
+        window.addEventListener("click", (e)=>{
+            if(e.clientX < 100 && e.clientY < 100){
+                count++;
+                if(count % 2 == 0){
+                    hide.style.display = "block";
+                }else{
+                    hide.style.display = "none";
+                }
+            }
+        });
+
+        var canvas = document.getElementById("canvas");
+        var c = canvas.getContext("2d");
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        var bg = document.getElementById("canvas_bg");
+        var bg_c = bg.getContext("2d");
+
+        bg.width = window.innerWidth;
+        bg.height = window.innerHeight;
+
+
+        var sun = new Ball(50, "yellow", 2000000);
+        sun.pos2d = new Vec2d(window.innerWidth/2, window.innerHeight/2);
+
+        var planet = new Ball(10, "blue", 1);
+        planet.pos2d = new Vec2d(sun.pos2d.x - window.innerWidth/4, sun.pos2d.y - window.innerHeight/5);
+        planet.vel2d = new Vec2d(60, -90);
+ 
+        var current = Date.now();
+        var elapsed = 0;    
+        var dt = 0;
+        var t = 0;
+        var animTime = 10;
+        var G = 1;
+        var gravitationalForce, acc;
+        var stars = [];
+
+        for(let i = 0; i < 100; i++){
+            stars.push(new Ball(1, "white"));
+            let star = stars[i];
+            star.pos2d = new Vec2d(random(0, canvas.width), random(0, canvas.height));
+            star.vel2d = new Vec2d(random(1, 5), 0);
+        }
+        
+        var touched = false;
+        window.addEventListener("click", ()=>{
+            touched = true;
+        });
+
+        function update(dt){
+            if(touched){
+                planet.pos2d = planet.pos2d.addScaled(planet.vel2d, dt);
+                gravitationalForce = Forces.gravity(G, sun.mass, planet.mass, sun.pos2d.sub(planet.pos2d));
+                acc = gravitationalForce.multiply(1/planet.mass);
+                planet.vel2d = planet.vel2d.addScaled(acc, dt);
+
+                stars.forEach(star=>{
+                    star.pos2d = star.pos2d.addScaled(star.vel2d, dt);
+                    if(star.pos2d.x > canvas.width){
+                        star.pos2d = new Vec2d(0, star.y);
+                    }
+                });
+            }
+        }
+
+        function draw(c){
+            c.fillStyle = "rgba(0, 0, 0, 0.3)";
+            c.fillRect(0, 0, canvas.width, canvas.height);
+            bg_c.clearRect(0, 0, canvas.width, canvas.height);
+            sun.draw(c);
+            planet.draw(c);
+            if(!touched){
+                c.font = "22px verdana";
+                c.fillStyle = "white";
+                c.fillText("Touch to push ball", 5, canvas.height/2 - 15);
+            }
+            stars.forEach(star=>{
+            star.draw(bg_c);
+        }); 
+        }
+
+        function loop(){
+            elapsed = Date.now();
+            dt = (elapsed - current) / 1000;
+            if(dt > 1) dt = 1;
+            t += dt;
+            //if(t < animTime){
+                update(dt);
+            //}
+            draw(c);
+            current = elapsed;
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+        
+    </script>
+</body>
+</html>

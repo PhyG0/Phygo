@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        body{
+            margin: 0px;
+        }
+        canvas{
+            border : 2px solid;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <script src="autoText.js"></script>
+    <script>
+        var canvas = document.getElementById("canvas");
+        var c = canvas.getContext("2d");
+        var w = canvas.width = window.innerWidth-20;
+        var h = canvas.height = window.innerHeight-20;
+        var t0 = Date.now(), t1 = 0, dt = 0;
+
+        var text = new AutoText(`Paragraphs are the building blocks of papers. Many students define paragraphs in terms of length: a paragraph is a group of at least five sentences, a paragraph is half a page long, etc. In reality, though, the unity and coherence of ideas among sentences is what constitutes a paragraph. A paragraph is defined as “a group of sentences or a single sentence that forms a unit” (Lunsford and  `, 20, 20, 50, "white", 2, false);
+
+        function update(dt, c){
+            text.update(dt, c);
+        }
+
+        function draw(c, dt){
+            c.clearRect(0, 0, canvas.width, canvas.height);
+            c.fillStyle = "red"
+            for(let i = 0; i < 10; i++){
+                c.fillRect(i * 20, i * 40, 20, 20)
+            }
+            c.fillStyle = "rgba(0,0,0,0.7)";
+            c.fillRect(0,0,w, h)
+            text.draw(c);
+        }
+
+        function loop(){
+            t1 = Date.now();
+            dt = t1 - t0;
+            draw(c, dt);
+            update(dt/1000, c);
+            t0 = t1;
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+</body>
+</html>

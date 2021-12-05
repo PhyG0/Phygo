@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3d cube</title>
+    <style>
+        canvas{
+            border : 2px solid black;
+        }
+        body {
+            margin: 0px;
+            padding: 0px;
+            background-color:grey;
+        }
+    </style>
+</head>
+<body>  
+    <canvas></canvas>
+    <script>
+        var canvas = document.querySelector("canvas");
+        var width = canvas.width = window.innerWidth;
+        var height = canvas.height = window.innerWidth;
+        var MODEL_MAX_X = 2;
+        var MODEL_MIN_X = -2;
+        var MODEL_MAX_Y = 2;
+        var MODEL_MIN_Y = -2;
+        var t = 0;
+
+        var c = canvas.getContext("2d");
+
+        var points = [];
+
+        function initGeometry(){
+            for(let x = -1; x <= 1; x += 0.5){
+                for(let y = -1; y <= 1;  y += 0.5){
+                    for(let z = -1; z <= 1; z += 0.5){
+                        points.push([x, y, z]);
+                    }
+                }
+            }
+        }
+
+        initGeometry();
+
+        function rotateY(point, theta){
+            var x = point[0],
+                y = point[1],
+                z = point[2];
+            return [
+                Math.cos(theta) * x - Math.sin(theta) * z,
+                y,
+                Math.sin(theta) * x +  Math.cos(theta) * z
+            ]
+        }
+
+        function rotateX(point, theta){
+            var x = point[0],
+                y = point[1],
+                z = point[2];
+            return [
+                x,
+                Math.cos(theta) * y - Math.sin(theta) * z,
+                Math.sin(theta) * y +  Math.cos(theta) * z
+            ]
+        }
+
+        
+        function perspectiveProjection(point){
+            var x = point[0],
+                y = point[1],
+                z = point[2]
+                return [
+                    x / (z + 3) * 2,
+                    y / (z + 3) * 2
+                ]
+        }
+
+        function project(point){
+            var perspectivePoint = perspectiveProjection(point);
+            var x = perspectivePoint[0],
+                y = perspectivePoint[1]
+            return [
+                width * (x - MODEL_MIN_X) / (MODEL_MAX_X - MODEL_MIN_X),
+                height * (1 - (y - MODEL_MIN_X) / (MODEL_MAX_X - MODEL_MIN_Y)),
+            ];
+        }
+
+        function renderPoint(point){
+            var projectedPoint = project(point);
+            var x = projectedPoint[0],
+                y = projectedPoint[1];
+                c.beginPath();
+                c.fillStyle = "white";
+                c.arc(x, y, 2, 0, 2 * Math.PI);
+                c.fill();
+        }
+
+        function animate(){
+            c.fillStyle = "black";
+            c.fillRect(0, 0, width, height);
+
+            t += 0.03;
+
+            points.forEach(p =>{
+                p = rotateY(p, t);
+                p = rotateX(p, t * 0.6);
+                renderPoint(p);
+            })
+
+            requestAnimationFrame(animate);
+        }
+        animate();
+    </script>
+</body>
+</html>

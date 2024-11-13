@@ -102,6 +102,14 @@ const Phygo = (function(){
             sum = sum.Scale(1 / array.length);
             return sum;
         }
+        AddThis(vector){
+            this.x += vector.x;
+            this.y += vector.y;
+        }
+        SubThis(vector) {
+            this.x -= vector.x;
+            this.y -= vector.y;
+        }
     }
 
 
